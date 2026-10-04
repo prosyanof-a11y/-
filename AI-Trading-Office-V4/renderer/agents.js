@@ -65,6 +65,7 @@ class Simulator {
     this.swing = rnd(-0.8, 1.2);
     this.trades = 0; this.wins = 0; this.pnl = 0;     // session trade stats (P&L tile)
     this.positions = []; this.equity = 1000; this.floating = 0; this.posSeq = 0;
+    this.interns = 0;                                  // dynamic team size (grows with profit)
     this.state = {};
     for (const a of AGENTS) this.state[a.id] = { status: 'waiting', metrics: {} };
     this._recompute();
@@ -155,6 +156,15 @@ class Simulator {
     }
     this.equity = 1000 + this.pnl + this.floating;
 
+    // dynamic team: hire an intern as profit grows, lose one on drawdown (with hysteresis)
+    if (this.equity >= 1000 + (this.interns + 1) * 55 && this.interns < 4) {
+      this.interns++;
+      log.push({ kind: 'ok', text: `Нанят новый агент-стажёр — команда: ${8 + this.interns}` });
+    } else if (this.interns > 0 && this.equity <= 1000 + this.interns * 45 - 25) {
+      this.interns--;
+      log.push({ kind: 'bad', text: `Стажёр покинул команду (просадка) — команда: ${8 + this.interns}` });
+    }
+
     return this.snapshot(log);
   }
 
@@ -176,7 +186,7 @@ class Simulator {
       seq: this.seq, mode: 'demo', connection: 'demo',
       summary: { connected: AGENTS.length, working, pnl: this.pnl, trades: this.trades,
                  winrate: this.trades ? Math.round(this.wins / this.trades * 100) : null,
-                 equity: this.equity, floating: this.floating,
+                 equity: this.equity, floating: this.floating, interns: this.interns,
                  positions: this.positions.map(p => ({ symbol: p.symbol, side: p.side, pnl: p.pnl })),
                  activeSymbols: this.positions.map(p => p.symbol) },
       agents,

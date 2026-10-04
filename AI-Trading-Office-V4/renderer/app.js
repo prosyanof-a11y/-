@@ -82,6 +82,32 @@ function buildPanels() {
 
 function highlightPanel(id) { for (const k in panels) panels[k].root.classList.toggle('selected', k === id); }
 
+// ---------- team chat (short role-appropriate chatter) ----------
+function genChat() {
+  if (!world || !world.agents) return;
+  const a = world.agents, lines = [];
+  const dir = String((a.market.metrics || {}).structure || '').toLowerCase();
+  if (dir) lines.push(['Рынок', `структура ${dir}, сентимент ${dir}`]);
+  const dec = (a.master.metrics || {}).decision;
+  if (dec) lines.push(['Мастер', `решение: ${dec}`]);
+  if (a.strategy.status === 'working') lines.push(['Стратег', 'стратегия подтверждена, мульти-ТФ']);
+  if (a.entry.status === 'working') lines.push(['Вход', 'есть триггер — входим по сигналу']);
+  if (a.exit.status === 'working') lines.push(['Выход', 'веду сделку, SL подтянут']);
+  if (a.risk.status === 'blocked') lines.push(['Риск', 'риск превышен — вход заблокирован ⛔']);
+  else lines.push(['Риск', 'риск в норме, лимиты ок']);
+  if (a.execution.status === 'working') lines.push(['Исполнение', 'отправляю ордер брокеру 📦']);
+  if (a.liquidity.metrics && a.liquidity.metrics.roi) lines.push(['Ликвидность', `ROI ${a.liquidity.metrics.roi}`]);
+  if (!lines.length) return;
+  const [who, text] = lines[Math.floor(Math.random() * lines.length)];
+  pushChat(who, text);
+}
+function pushChat(who, text) {
+  const ul = el('chat-list'); if (!ul) return;
+  const li = document.createElement('li'); li.className = 'chat-item';
+  li.innerHTML = `<span class="chat-who">${who}</span><span class="chat-text">${escapeHtml(text)}</span>`;
+  ul.prepend(li); while (ul.children.length > 50) ul.removeChild(ul.lastChild);
+}
+
 function renderPositions(list) {
   const ul = el('pos-list'); if (!ul) return;
   if (!list.length) { ul.innerHTML = '<li class="pos-empty">Нет открытых позиций</li>'; return; }
@@ -299,8 +325,9 @@ window.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
     const show = t.dataset.tab;
-    el('pos-list').hidden = show !== 'pos'; el('feed-list').hidden = show !== 'feed';
+    el('pos-list').hidden = show !== 'pos'; el('chat-list').hidden = show !== 'chat'; el('feed-list').hidden = show !== 'feed';
   }));
+  setInterval(genChat, 2600);
   window.addEventListener('resize', () => requestAnimationFrame(drawLinks));
   tickClock(); setInterval(tickClock, 1000);
   wireBridge();

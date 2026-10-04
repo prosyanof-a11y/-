@@ -48,6 +48,9 @@ let canvas, ctx, raf = 0, last = 0, dpr = 1;
 let ents = {}, agentsDef = null;
 let viewScale = 1, viewOx = 0, viewOy = 0, selectedId = null, onSelectCb = null;
 let activeSymbols = new Set();
+let interns = [], internSeq = 0, lastEquity = 1000, cheerUntil = 0;
+const ENTRANCE = { x: 600, y: 172 };            // interns appear/leave here (under the video wall)
+const ornd = (a, b) => a + Math.random() * (b - a);
 let standup = { active: false, until: 0, nextAt: 0 };
 let signals = [], nextSignalAt = 0, lastDecision = '';
 
@@ -67,14 +70,39 @@ function initEntities() {
       color: accentFor(a.id), skin: SKINS[hh % SKINS.length], hair: HAIRS[(hh >> 3) % HAIRS.length],
       hairStyle: hh % 5, beard: ((hh >> 6) % 4) === 0, look: ROLE_LOOK[a.id] || {},
       brokerRun: { active: false, phase: 'go', until: 0 }, brokerCooldown: 0,
-      blinkOffset: (hh % 5000), data: null, gesture: null, gestureUntil: 0
+      blinkOffset: (hh % 5000), data: null, gesture: null, gestureUntil: 0,
+      energy: 65 + Math.random() * 30
     };
   });
   standup = { active: false, until: 0, nextAt: performance.now() + 20000 };
   signals = []; nextSignalAt = performance.now() + 4000; lastDecision = '';
+  interns = []; internSeq = 0; lastEquity = 1000; cheerUntil = 0;
+}
+
+function spawnIntern() {
+  const hh = Math.floor(Math.random() * 100000);
+  interns.push({
+    id: 'intern' + (++internSeq), x: ENTRANCE.x + ornd(-24, 24), y: ENTRANCE.y + 8,
+    tx: ENTRANCE.x, ty: ENTRANCE.y + 40, status: 'waiting', phase: Math.random() * 10, facing: 1, moving: false,
+    roaming: false, dwellUntil: 0, roamKind: null, leaving: false,
+    color: '#8fd0ff', skin: SKINS[hh % SKINS.length], hair: HAIRS[(hh >> 3) % HAIRS.length],
+    hairStyle: hh % 5, beard: false, look: {}, blinkOffset: hh % 5000, gesture: null, gestureUntil: 0, energy: 85
+  });
+}
+function syncInterns(target) {
+  let active = interns.filter(i => !i.leaving);
+  while (active.length < target) { spawnIntern(); active = interns.filter(i => !i.leaving); }
+  for (let i = interns.length - 1; i >= 0 && active.length > target; i--) {
+    if (!interns[i].leaving) { interns[i].leaving = true; active = interns.filter(x => !x.leaving); }
+  }
+}
+function pickRoamGeneric(e) {
+  if (Math.random() < 0.5) { e.tx = 120 + Math.random() * (W - 240); e.ty = 360 + Math.random() * 320; e.roamKind = 'wander'; }
+  else { const r = ROAM[Math.floor(Math.random() * ROAM.length)]; e.tx = r.x; e.ty = r.y; e.roamKind = r.kind; }
 }
 
 function pickRoam(e) {
+  if (e.energy != null && e.energy < 35 && Math.random() < 0.6) { e.tx = ROAM[0].x; e.ty = ROAM[0].y; e.roamKind = 'coffee'; return; }  // tired → coffee
   if (Math.random() < 0.28) { const d = DESKS[e.id]; e.tx = d.x; e.ty = d.y; e.roamKind = 'desk'; return; }
   const r = ROAM[Math.floor(Math.random() * ROAM.length)];
   e.tx = r.x; e.ty = r.y; e.roamKind = r.kind;
@@ -88,6 +116,9 @@ const Office = {
     const m = world.agents.master && world.agents.master.metrics;
     if (m && m.decision) lastDecision = String(m.decision);
     activeSymbols = new Set((world.summary && world.summary.activeSymbols) || []);
+    const eq = world.summary && world.summary.equity;
+    if (typeof eq === 'number') { if (eq - lastEquity > 4) cheerUntil = performance.now() + 1500; lastEquity = eq; }
+    syncInterns((world.summary && world.summary.interns) || 0);
   },
   start() { if (!raf) { last = performance.now(); loop(performance.now()); } },
   stop() { cancelAnimationFrame(raf); raf = 0; },
@@ -95,7 +126,9 @@ const Office = {
   forceSignal() { signals.push({ t0: performance.now(), dur: 4600, symbol: SYMB[Math.floor(Math.random() * SYMB.length)], side: sideFromDecision() }); },
   forceBrokerRun() { const e = ents.execution; if (e) e.brokerRun = { active: true, phase: 'go', until: 0, symbol: 'XAUUSD', side: 'BUY' }; },
   select(id) { selectedId = (id && ents[id]) ? id : null; if (onSelectCb) onSelectCb(selectedId); },
-  onSelect(cb) { onSelectCb = cb; }
+  onSelect(cb) { onSelectCb = cb; },
+  testInterns(n) { syncInterns(n); }   // preview helper
+
 };
 
 function resizeIfNeeded() {
@@ -174,6 +207,24 @@ function step(dt, now) {
       }
     }
     if (e.gesture && (e.moving || now > e.gestureUntil)) e.gesture = null;
+    // energy: drains at the desk, recovers on breaks (coffee fastest)
+    if (e.status === 'working') e.energy = Math.max(0, e.energy - 0.02 * dt);
+    else e.energy = Math.min(100, e.energy + (e.roamKind === 'coffee' ? 0.05 : 0.02) * dt);
+  }
+  // interns roam the hall; a leaving one heads for the exit and despawns
+  for (let i = interns.length - 1; i >= 0; i--) {
+    const e = interns[i];
+    if (e.leaving) {
+      e.tx = ENTRANCE.x; e.ty = ENTRANCE.y + 6; e.roamKind = null; moveToward(e, dt);
+      if (Math.abs(e.x - ENTRANCE.x) < 8 && Math.abs(e.y - (ENTRANCE.y + 6)) < 8) interns.splice(i, 1);
+      continue;
+    }
+    if (!e.roaming) { e.roaming = true; pickRoamGeneric(e); e.dwellUntil = 0; }
+    if (Math.abs(e.x - e.tx) < 3 && Math.abs(e.y - e.ty) < 3) {
+      if (!e.dwellUntil) e.dwellUntil = now + 1500 + Math.random() * 4000;
+      else if (now > e.dwellUntil) { pickRoamGeneric(e); e.dwellUntil = 0; }
+    }
+    moveToward(e, dt);
   }
 }
 
@@ -217,6 +268,7 @@ function draw(now) {
     items.push({ y: d.y + 34, fn: () => { drawWorkstation(id, now); if (isSit) drawSeated(e, now); } });
     if (!isSit) items.push({ y: e.y + 16, fn: () => drawWalking(e, now) });
   }
+  for (const e of interns) items.push({ y: e.y + 16, fn: () => drawWalking(e, now) });
   items.sort((a, b) => a.y - b.y);
   for (const it of items) it.fn();
 
@@ -492,7 +544,8 @@ function drawChair(x, y) {
 /* ---- people ---- */
 function drawSeated(e, now) {
   const d = DESKS[e.id]; const breath = Math.sin(now / 700 + e.phase) * 0.5;
-  const x = d.x, y = d.y - 18 + breath;
+  const cheer = now < cheerUntil ? Math.abs(Math.sin(now / 80 + e.phase)) * 3 : 0;   // bounce on a team win
+  const x = d.x, y = d.y - 18 + breath - cheer;
   shadow(x, y + 22, 13);
   ctx.fillStyle = e.color; roundRect(x - 11, y - 2, 22, 22, 7); ctx.fill();
   ctx.fillStyle = shade(e.color, -28); roundRect(x + 4, y - 2, 7, 22, 4); ctx.fill();      // body shade
@@ -508,7 +561,8 @@ function drawSeated(e, now) {
 }
 
 function drawWalking(e, now) {
-  const x = e.x, y = e.y, walk = e.moving ? Math.sin(e.phase) : Math.sin(now / 700 + e.phase) * 0.3;
+  const cheer = now < cheerUntil ? Math.abs(Math.sin(now / 80 + e.phase)) * 3 : 0;
+  const x = e.x, y = e.y - cheer, walk = e.moving ? Math.sin(e.phase) : Math.sin(now / 700 + e.phase) * 0.3;
   shadow(x, y + 15, 11);
   ctx.fillStyle = '#1b2b4d'; roundRect(x - 6, y + 6 + walk * 2, 5, 11, 2); ctx.fill(); roundRect(x + 1, y + 6 - walk * 2, 5, 11, 2); ctx.fill();
   ctx.fillStyle = e.color; roundRect(x - 9, y - 10, 18, 20, 6); ctx.fill();
@@ -573,12 +627,20 @@ function drawHair(e, x, y) {
 }
 
 function nameplate(e, x, y) {
-  const label = SHORT[e.id] || e.id; ctx.font = '9px Segoe UI, sans-serif'; ctx.textAlign = 'center';
+  const label = SHORT[e.id] || (String(e.id).startsWith('intern') ? 'Стажёр' : e.id);
+  ctx.font = '9px Segoe UI, sans-serif'; ctx.textAlign = 'center';
   const w = ctx.measureText(label).width + 10, st = e.status;
   const bg = st === 'working' ? 'rgba(54,227,154,0.18)' : st === 'blocked' ? 'rgba(255,93,108,0.22)' : 'rgba(12,24,52,0.8)';
   roundRect(x - w / 2, y - 9, w, 13, 4); ctx.fillStyle = bg; ctx.fill();
   ctx.strokeStyle = 'rgba(54,208,255,0.25)'; ctx.lineWidth = 0.8; ctx.stroke();
   ctx.fillStyle = 'rgba(234,244,255,0.95)'; ctx.fillText(label, x, y + 1);
+  // energy bar
+  if (e.energy != null) {
+    const bw = 22, ex = x - bw / 2, ey = y + 5;
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; roundRect(ex, ey, bw, 2.6, 1); ctx.fill();
+    ctx.fillStyle = e.energy > 50 ? '#36e39a' : e.energy > 25 ? '#ffcf5a' : '#ff6b7a';
+    roundRect(ex, ey, bw * e.energy / 100, 2.6, 1); ctx.fill();
+  }
 }
 
 function emote(e, x, y, now) {

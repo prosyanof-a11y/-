@@ -122,6 +122,11 @@ body.view-floor .agents-grid,body.view-floor .links{display:none}
 .pos-pnl{font-variant-numeric:tabular-nums; font-weight:700; min-width:58px; text-align:right}
 .pos-pnl.up{color:var(--green)} .pos-pnl.down{color:var(--red)}
 .pos-empty{color:var(--muted); font-size:12px; text-align:center; padding:18px 0}
+.chat-list{list-style:none; margin:0; padding:0; overflow:auto; display:flex; flex-direction:column; gap:7px; flex:1 1 auto; min-height:0}
+.chat-item{display:flex; flex-direction:column; gap:1px; font-size:11.5px; padding:6px 9px; border-radius:8px;
+  background:rgba(10,20,44,.5); border:1px solid rgba(64,180,230,.12)}
+.chat-who{font-weight:700; color:var(--cyan); font-size:10px; letter-spacing:.04em}
+.chat-text{color:#cfe0ff}
 .feed-title{font-size:11px; letter-spacing:.16em; color:var(--cyan); margin-bottom:10px; font-weight:700}
 .feed-list{list-style:none; margin:0; padding:0; overflow:auto; display:flex; flex-direction:column; gap:7px; flex:1 1 auto; min-height:0}
 [hidden]{display:none !important}
