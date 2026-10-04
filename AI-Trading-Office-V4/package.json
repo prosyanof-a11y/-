@@ -1,0 +1,40 @@
+{
+  "name": "ai-trading-office",
+  "version": "4.1.1",
+  "description": "AI Trading Office — live command-center HUD for an 8-agent trading system. Launch it and see what the agents are doing right now.",
+  "main": "main/index.js",
+  "author": "prosyanof",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win",
+    "dist:all": "electron-builder -mwl"
+  },
+  "build": {
+    "appId": "com.prosyanof.aitradingoffice",
+    "productName": "AI Trading Office",
+    "files": [
+      "main/**/*",
+      "renderer/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "mac": { "target": "dmg" },
+    "linux": { "target": "AppImage" }
+  },
+  "devDependencies": {
+    "electron": "^32.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
