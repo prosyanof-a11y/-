@@ -99,11 +99,32 @@ body.view-floor .agents-grid,body.view-floor .links{display:none}
   width:120px; height:120px; border-radius:50%;
   background:radial-gradient(circle, rgba(54,208,255,.35), rgba(54,208,255,0) 70%); animation:pulse 2.6s infinite}
 
-/* feed */
-.feed{z-index:2; background:var(--panel); border:1px solid var(--panel-brd); border-radius:12px;
-  margin-left:14px; padding:12px; display:flex; flex-direction:column; min-height:0; backdrop-filter:blur(6px)}
+/* right column: equity + tabs + positions/feed */
+.side{z-index:2; background:var(--panel); border:1px solid var(--panel-brd); border-radius:12px;
+  margin-left:14px; padding:12px; display:flex; flex-direction:column; min-height:0; gap:10px; backdrop-filter:blur(6px)}
+.sec-title{font-size:11px; letter-spacing:.16em; color:var(--cyan); font-weight:700}
+.equity{display:flex; flex-direction:column; gap:6px; flex:0 0 auto}
+.equity-head{display:flex; align-items:baseline; justify-content:space-between}
+.equity-val{font-size:18px; font-weight:800; color:var(--green); font-variant-numeric:tabular-nums}
+#equity-chart{width:100%; height:70px; display:block}
+.equity-sub{font-size:10.5px; color:var(--muted)}
+.tabs{display:flex; gap:6px; flex:0 0 auto}
+.tab{flex:1; padding:6px 0; font-size:11px; letter-spacing:.06em; border-radius:7px; cursor:pointer;
+  background:transparent; border:1px solid var(--panel-brd); color:var(--muted)}
+.tab.active{color:#eaf4ff; border-color:var(--cyan); background:rgba(54,208,255,.08)}
+.pos-list{list-style:none; margin:0; padding:0; overflow:auto; display:flex; flex-direction:column; gap:6px; flex:1 1 auto; min-height:0}
+.pos-item{display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:8px; font-size:12px;
+  padding:7px 9px; border-radius:7px; background:rgba(10,20,44,.6); border:1px solid rgba(64,180,230,.14)}
+.pos-sym{font-weight:700; color:#eaf4ff; letter-spacing:.03em}
+.pos-side{font-size:10px; font-weight:800; padding:2px 7px; border-radius:5px}
+.pos-side.buy{color:var(--green); background:rgba(54,227,154,.12)}
+.pos-side.sell{color:var(--red); background:rgba(255,93,108,.14)}
+.pos-pnl{font-variant-numeric:tabular-nums; font-weight:700; min-width:58px; text-align:right}
+.pos-pnl.up{color:var(--green)} .pos-pnl.down{color:var(--red)}
+.pos-empty{color:var(--muted); font-size:12px; text-align:center; padding:18px 0}
 .feed-title{font-size:11px; letter-spacing:.16em; color:var(--cyan); margin-bottom:10px; font-weight:700}
-.feed-list{list-style:none; margin:0; padding:0; overflow:auto; display:flex; flex-direction:column; gap:7px}
+.feed-list{list-style:none; margin:0; padding:0; overflow:auto; display:flex; flex-direction:column; gap:7px; flex:1 1 auto; min-height:0}
+[hidden]{display:none !important}
 .feed-item{display:flex; gap:9px; font-size:11.5px; align-items:baseline; padding-bottom:6px; border-bottom:1px dashed rgba(127,152,196,.14)}
 .feed-item .t{color:var(--muted); font-variant-numeric:tabular-nums; flex:0 0 auto}
 .feed-item.ok .m{color:var(--green)} .feed-item.bad .m{color:var(--red)}

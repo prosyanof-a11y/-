@@ -35,9 +35,18 @@
     <section id="agents-grid" class="agents-grid"><!-- panels injected --></section>
     <canvas id="floor" class="floor"></canvas>
 
-    <aside class="feed">
-      <div class="feed-title">ЛЕНТА СОБЫТИЙ</div>
-      <ul id="feed-list" class="feed-list"></ul>
+    <aside class="side">
+      <div class="equity">
+        <div class="equity-head"><span class="sec-title">ЭКВИТИ</span><span class="equity-val" id="equity-val">1000 $</span></div>
+        <canvas id="equity-chart" width="600" height="150"></canvas>
+        <div class="equity-sub"><span id="equity-float">Плавающий: 0 $</span></div>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="pos">Позиции</button>
+        <button class="tab" data-tab="feed">Лента</button>
+      </div>
+      <ul id="pos-list" class="pos-list"></ul>
+      <ul id="feed-list" class="feed-list" hidden></ul>
     </aside>
   </main>
 

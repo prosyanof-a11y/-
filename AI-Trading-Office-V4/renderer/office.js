@@ -47,6 +47,7 @@ const MAP_ARCS = [[0, 2], [2, 4], [1, 5], [3, 6], [0, 7], [5, 3], [2, 6]];
 let canvas, ctx, raf = 0, last = 0, dpr = 1;
 let ents = {}, agentsDef = null;
 let viewScale = 1, viewOx = 0, viewOy = 0, selectedId = null, onSelectCb = null;
+let activeSymbols = new Set();
 let standup = { active: false, until: 0, nextAt: 0 };
 let signals = [], nextSignalAt = 0, lastDecision = '';
 
@@ -86,6 +87,7 @@ const Office = {
     for (const id in ents) { const s = world.agents[id]; if (s) { ents[id].status = s.status; ents[id].data = s; } }
     const m = world.agents.master && world.agents.master.metrics;
     if (m && m.decision) lastDecision = String(m.decision);
+    activeSymbols = new Set((world.summary && world.summary.activeSymbols) || []);
   },
   start() { if (!raf) { last = performance.now(); loop(performance.now()); } },
   stop() { cancelAnimationFrame(raf); raf = 0; },
@@ -328,16 +330,28 @@ function drawBackWall(now) {
   drawTicker(now);
 }
 
+const TICKER = [['XAUUSD', '2648.5', true], ['EURUSD', '1.0892', false], ['BTCUSD', '68420', true], ['US500', '5820', true], ['GBPUSD', '1.268', false], ['USDJPY', '149.8', true], ['ETHUSD', '3285', true]];
 function drawTicker(now) {
-  const y = 150, h = 18;
+  const y = 150, h = 18, gap = 28;
   ctx.save(); ctx.beginPath(); ctx.rect(0, y, W, h); ctx.clip();
   ctx.fillStyle = '#05112a'; ctx.fillRect(0, y, W, h);
   ctx.strokeStyle = 'rgba(54,208,255,0.25)'; ctx.lineWidth = 1; line(0, y, W, y); line(0, y + h, W, y + h);
-  const text = '   XAUUSD 2648.5 ▲    EURUSD 1.0892 ▼    BTCUSD 68420 ▲    US500 5820 ▲    GBPUSD 1.268 ▼    USDJPY 149.8 ▲    ETHUSD 3285 ▲    ';
-  ctx.font = '11px Consolas, monospace'; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(120,210,255,0.9)';
-  const tw = ctx.measureText(text).width, off = -((now / 45) % tw);
-  for (let x = off; x < W; x += tw) ctx.fillText(text, x, y + 13);
-  ctx.restore();
+  ctx.font = '11px Consolas, monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  const cy = y + h / 2;
+  const tokW = TICKER.map(([s, p]) => ctx.measureText(`${s} ${p} ▲`).width + gap);
+  const total = tokW.reduce((a, b) => a + b, 0);
+  let x = -((now / 45) % total);
+  while (x < W) {
+    for (let i = 0; i < TICKER.length; i++) {
+      const [sym, px, up] = TICKER[i]; const label = `${sym} ${px}`, active = activeSymbols.has(sym);
+      const wlab = ctx.measureText(label + ' ▲').width;
+      if (active) { ctx.fillStyle = 'rgba(255,207,90,0.18)'; roundRect(x - 4, y + 2, wlab + 8, h - 4, 3); ctx.fill(); }
+      ctx.fillStyle = active ? '#ffcf5a' : 'rgba(120,210,255,0.9)'; ctx.fillText(label, x, cy);
+      ctx.fillStyle = up ? '#36e39a' : '#ff6b7a'; ctx.fillText(up ? '▲' : '▼', x + ctx.measureText(label + ' ').width, cy);
+      x += tokW[i];
+    }
+  }
+  ctx.textBaseline = 'alphabetic'; ctx.restore();
 }
 
 // accelerated day/night so the sky visibly shifts dawn→day→dusk→night over ~2 min

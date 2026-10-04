@@ -50,6 +50,7 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const pct = (v) => v.toFixed(0) + '%';
+const SYM = ['XAUUSD', 'EURUSD', 'BTCUSD', 'US500', 'GBPUSD', 'USDJPY', 'ETHUSD'];
 
 // ---- DEMO brain: the simulator ---------------------------------------------
 class Simulator {
@@ -63,6 +64,7 @@ class Simulator {
     this.roi = rnd(-1.5, 4.5);
     this.swing = rnd(-0.8, 1.2);
     this.trades = 0; this.wins = 0; this.pnl = 0;     // session trade stats (P&L tile)
+    this.positions = []; this.equity = 1000; this.floating = 0; this.posSeq = 0;
     this.state = {};
     for (const a of AGENTS) this.state[a.id] = { status: 'waiting', metrics: {} };
     this._recompute();
@@ -131,15 +133,27 @@ class Simulator {
     if (this.risk > 1.6 && Math.random() < 0.5)
       log.push({ kind: 'bad', text: `Риск-менеджер: общий риск ${this.risk.toFixed(1)}% — вход заблокирован` });
 
-    // simulate trade closes for the session P&L tile
-    if (this.conf > 76 && this.risk < 1.6 && Math.random() < 0.32) {
-      this.trades++;
-      const win = Math.random() < (this.bull ? 0.58 : 0.5);
-      const amt = win ? rnd(6, 42) : -rnd(5, 30);
-      if (win) this.wins++;
-      this.pnl += amt;
-      log.push({ kind: win ? 'ok' : 'bad', text: `Сделка ${win ? 'в прибыль' : 'в убыток'}: ${amt >= 0 ? '+' : ''}${amt.toFixed(0)}$` });
+    // --- open positions lifecycle (trading panel + equity curve) ---
+    this.floating = 0;
+    for (const p of this.positions) {                    // drift floating P&L
+      const favorable = (p.side === 'BUY') === this.bull;
+      p.pnl += favorable ? rnd(-2, 6) : rnd(-6, 2);
+      p.age++; this.floating += p.pnl;
     }
+    for (let i = this.positions.length - 1; i >= 0; i--) {  // close some
+      const p = this.positions[i];
+      if (p.age > 5 && (Math.random() < 0.22 || Math.abs(p.pnl) > 45)) {
+        this.pnl += p.pnl; this.trades++; if (p.pnl >= 0) this.wins++;
+        log.push({ kind: p.pnl >= 0 ? 'ok' : 'bad', text: `${p.symbol} ${p.side} закрыта: ${p.pnl >= 0 ? '+' : ''}${p.pnl.toFixed(0)}$` });
+        this.positions.splice(i, 1);
+      }
+    }
+    if (this.conf > 76 && this.risk < 1.6 && this.positions.length < 3 && Math.random() < 0.3) {  // open
+      const symbol = pick(SYM), side = this.bull ? 'BUY' : 'SELL';
+      this.positions.push({ id: ++this.posSeq, symbol, side, pnl: 0, age: 0 });
+      log.push({ kind: 'info', text: `Открыта позиция ${symbol} ${side}` });
+    }
+    this.equity = 1000 + this.pnl + this.floating;
 
     return this.snapshot(log);
   }
@@ -161,7 +175,10 @@ class Simulator {
     return {
       seq: this.seq, mode: 'demo', connection: 'demo',
       summary: { connected: AGENTS.length, working, pnl: this.pnl, trades: this.trades,
-                 winrate: this.trades ? Math.round(this.wins / this.trades * 100) : null },
+                 winrate: this.trades ? Math.round(this.wins / this.trades * 100) : null,
+                 equity: this.equity, floating: this.floating,
+                 positions: this.positions.map(p => ({ symbol: p.symbol, side: p.side, pnl: p.pnl })),
+                 activeSymbols: this.positions.map(p => p.symbol) },
       agents,
       log: log.map((l, i) => ({ ...l, ts: nowHHMMSS(), seq: this.seq * 100 + i }))
     };

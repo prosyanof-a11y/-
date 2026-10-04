@@ -82,6 +82,17 @@ function buildPanels() {
 
 function highlightPanel(id) { for (const k in panels) panels[k].root.classList.toggle('selected', k === id); }
 
+function renderPositions(list) {
+  const ul = el('pos-list'); if (!ul) return;
+  if (!list.length) { ul.innerHTML = '<li class="pos-empty">Нет открытых позиций</li>'; return; }
+  ul.innerHTML = list.map(p => {
+    const buy = p.side === 'BUY', pnl = p.pnl || 0;
+    return `<li class="pos-item"><span class="pos-sym">${p.symbol}</span>` +
+      `<span class="pos-side ${buy ? 'buy' : 'sell'}">${buy ? '▲ BUY' : '▼ SELL'}</span>` +
+      `<span class="pos-pnl ${pnl >= 0 ? 'up' : 'down'}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)} $</span></li>`;
+  }).join('');
+}
+
 // ---------- connection lines (hub -> each agent) ----------
 function drawLinks() {
   const svg = el('links');
@@ -149,6 +160,17 @@ function render(w) {
     pv.textContent = (v >= 0 ? '+' : '') + v.toFixed(0) + ' $';
     pv.style.color = v >= 0 ? 'var(--green)' : 'var(--red)';
     if (history.pnl) { history.pnl.push(v); if (history.pnl.length > 60) history.pnl.shift(); drawSpark(el('pnl-spark'), history.pnl, v >= 0 ? '#36e39a' : '#ff5d6c'); }
+  }
+  // trading panel: equity curve + open positions
+  if (w.summary && el('equity-val')) {
+    const eq = w.summary.equity ?? 1000;
+    el('equity-val').textContent = Math.round(eq) + ' $'; el('equity-val').style.color = eq >= 1000 ? 'var(--green)' : 'var(--red)';
+    const f = w.summary.floating ?? 0, fe = el('equity-float');
+    if (fe) { fe.textContent = 'Плавающий: ' + (f >= 0 ? '+' : '') + f.toFixed(0) + ' $'; fe.style.color = f >= 0 ? 'var(--green)' : 'var(--red)'; }
+    if (!history.equity) history.equity = [];
+    history.equity.push(eq); if (history.equity.length > 80) history.equity.shift();
+    if (el('equity-chart')) drawSpark(el('equity-chart'), history.equity, eq >= 1000 ? '#36e39a' : '#ff5d6c');
+    renderPositions(w.summary.positions || []);
   }
   // header mode
   const modeBadge = el('mode-badge');
@@ -274,6 +296,11 @@ window.addEventListener('DOMContentLoaded', () => {
   el('btn-cancel').addEventListener('click', closeSettings);
   el('btn-save').addEventListener('click', saveSettings);
   el('btn-view').addEventListener('click', toggleView);
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+    const show = t.dataset.tab;
+    el('pos-list').hidden = show !== 'pos'; el('feed-list').hidden = show !== 'feed';
+  }));
   window.addEventListener('resize', () => requestAnimationFrame(drawLinks));
   tickClock(); setInterval(tickClock, 1000);
   wireBridge();
