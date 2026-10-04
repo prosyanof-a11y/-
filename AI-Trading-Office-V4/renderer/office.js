@@ -46,6 +46,7 @@ const MAP_ARCS = [[0, 2], [2, 4], [1, 5], [3, 6], [0, 7], [5, 3], [2, 6]];
 
 let canvas, ctx, raf = 0, last = 0, dpr = 1;
 let ents = {}, agentsDef = null;
+let viewScale = 1, viewOx = 0, viewOy = 0, selectedId = null;
 let standup = { active: false, until: 0, nextAt: 0 };
 let signals = [], nextSignalAt = 0, lastDecision = '';
 
@@ -64,7 +65,8 @@ function initEntities() {
       standupSlot: { x: TABLE.x + Math.cos(ang) * 104, y: TABLE.y + Math.sin(ang) * 62 },
       color: accentFor(a.id), skin: SKINS[hh % SKINS.length], hair: HAIRS[(hh >> 3) % HAIRS.length],
       hairStyle: hh % 5, beard: ((hh >> 6) % 4) === 0, look: ROLE_LOOK[a.id] || {},
-      brokerRun: { active: false, phase: 'go', until: 0 }, brokerCooldown: 0
+      brokerRun: { active: false, phase: 'go', until: 0 }, brokerCooldown: 0,
+      blinkOffset: (hh % 5000), data: null
     };
   });
   standup = { active: false, until: 0, nextAt: performance.now() + 20000 };
@@ -78,10 +80,10 @@ function pickRoam(e) {
 }
 
 const Office = {
-  init(cv, agents) { canvas = cv; ctx = cv.getContext('2d'); agentsDef = agents; initEntities(); },
+  init(cv, agents) { canvas = cv; ctx = cv.getContext('2d'); agentsDef = agents; initEntities(); cv.addEventListener('click', onClick); cv.style.cursor = 'pointer'; },
   update(world) {
     if (!world || !world.agents) return;
-    for (const id in ents) { const s = world.agents[id]; if (s) ents[id].status = s.status; }
+    for (const id in ents) { const s = world.agents[id]; if (s) { ents[id].status = s.status; ents[id].data = s; } }
     const m = world.agents.master && world.agents.master.metrics;
     if (m && m.decision) lastDecision = String(m.decision);
   },
@@ -89,7 +91,8 @@ const Office = {
   stop() { cancelAnimationFrame(raf); raf = 0; },
   forceStandup() { standup.active = true; standup.until = performance.now() + 20000; },
   forceSignal() { signals.push({ t0: performance.now(), dur: 4600, symbol: SYMB[Math.floor(Math.random() * SYMB.length)], side: sideFromDecision() }); },
-  forceBrokerRun() { const e = ents.execution; if (e) e.brokerRun = { active: true, phase: 'go', until: 0, symbol: 'XAUUSD', side: 'BUY' }; }
+  forceBrokerRun() { const e = ents.execution; if (e) e.brokerRun = { active: true, phase: 'go', until: 0, symbol: 'XAUUSD', side: 'BUY' }; },
+  select(id) { selectedId = (id && ents[id]) ? id : null; }
 };
 
 function resizeIfNeeded() {
@@ -181,7 +184,8 @@ function draw(now) {
   const cw = canvas.width, ch = canvas.height;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cw, ch);
   const scale = Math.min(cw / W, ch / H);
-  ctx.setTransform(scale, 0, 0, scale, (cw - W * scale) / 2, (ch - H * scale) / 2);
+  viewScale = scale; viewOx = (cw - W * scale) / 2; viewOy = (ch - H * scale) / 2;
+  ctx.setTransform(scale, 0, 0, scale, viewOx, viewOy);
   ctx.textBaseline = 'alphabetic';
 
   drawFloor();
@@ -208,6 +212,52 @@ function draw(now) {
 
   drawSignalTokens(now);
   if (standup.active) drawStandupBanner(now);
+  if (selectedId && ents[selectedId]) { drawSelectionRing(ents[selectedId], now); drawInspector(selectedId); }
+  else { ctx.fillStyle = 'rgba(127,152,196,0.5)'; ctx.font = '10px Segoe UI, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('клик по агенту — детали', W / 2, H - 6); }
+}
+
+// click a character to inspect it (ties the floor to the live data)
+function onClick(ev) {
+  const rect = canvas.getBoundingClientRect();
+  const lx = ((ev.clientX - rect.left) * (canvas.width / rect.width) - viewOx) / viewScale;
+  const ly = ((ev.clientY - rect.top) * (canvas.height / rect.height) - viewOy) / viewScale;
+  let best = null, bd = 1e9;
+  for (const id in ents) { const e = ents[id]; const d = Math.hypot(e.x - lx, e.y - ly); if (d < bd) { bd = d; best = id; } }
+  selectedId = (best && bd < 34 && best === selectedId) ? null : (best && bd < 34 ? best : null);
+}
+
+function drawSelectionRing(e, now) {
+  const p = 0.6 + 0.4 * Math.sin(now / 260);
+  ctx.strokeStyle = `rgba(54,208,255,${0.9 * p})`; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(e.x, e.y + 6, 20, 10, 0, 0, 7); ctx.stroke();
+  ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.ellipse(e.x, e.y + 6, 25, 13, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+}
+
+function drawInspector(id) {
+  const def = agentsDef.find(a => a.id === id); const e = ents[id];
+  const s = e.data || { status: e.status, metrics: {} };
+  const st = { working: ['РАБОТАЕТ', '#36e39a'], waiting: ['ОЖИДАНИЕ', '#ffcf5a'], wait: ['ЖДЁТ', '#ffcf5a'], blocked: ['БЛОК', '#ff6b7a'], idle: ['ОФФЛАЙН', '#7f98c4'] }[s.status] || ['—', '#7f98c4'];
+  const rows = (def ? def.fields : []).map(([label, key]) => [label, (s.metrics && s.metrics[key] != null && s.metrics[key] !== '') ? String(s.metrics[key]) : '—']);
+  const cw = 200, ch = 34 + rows.length * 16 + 10;
+  let cx = e.x + 26, cy = e.y - 30;
+  if (cx + cw > W - 8) cx = e.x - 26 - cw; if (cx < 8) cx = 8;
+  if (cy + ch > H - 8) cy = H - 8 - ch; if (cy < 158) cy = 158;
+  // card
+  roundRect(cx, cy, cw, ch, 8); ctx.fillStyle = 'rgba(8,16,38,0.96)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(54,208,255,0.55)'; ctx.lineWidth = 1.4; ctx.stroke();
+  // connector
+  ctx.strokeStyle = 'rgba(54,208,255,0.4)'; ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(cx + (e.x < cx ? 0 : cw), cy + 16); ctx.stroke();
+  // header
+  ctx.fillStyle = '#eaf4ff'; ctx.font = 'bold 12px Segoe UI, sans-serif'; ctx.textAlign = 'left'; ctx.fillText(def ? def.name : id, cx + 10, cy + 17);
+  ctx.fillStyle = st[1]; ctx.font = 'bold 9px Segoe UI'; ctx.textAlign = 'right'; ctx.fillText(st[0], cx + cw - 10, cy + 16);
+  ctx.fillStyle = 'rgba(127,152,196,0.9)'; ctx.font = '9px Segoe UI'; ctx.textAlign = 'left'; ctx.fillText(def ? def.sub : '', cx + 10, cy + 29);
+  ctx.strokeStyle = 'rgba(54,208,255,0.15)'; line(cx + 8, cy + 34, cx + cw - 8, cy + 34);
+  // rows
+  rows.forEach(([k, v], i) => {
+    const ry = cy + 48 + i * 16;
+    ctx.fillStyle = 'rgba(127,152,196,0.95)'; ctx.font = '10px Segoe UI'; ctx.textAlign = 'left'; ctx.fillText(k, cx + 10, ry);
+    ctx.fillStyle = '#eaf4ff'; ctx.textAlign = 'right'; ctx.fillText(v, cx + cw - 10, ry);
+  });
 }
 
 // a labelled trade signal (e.g. "XAUUSD BUY") traveling Рынок→Стратег→Вход→Исполнение
@@ -404,7 +454,7 @@ function drawSeated(e, now) {
   const t = e.status === 'working' ? Math.sin(now * 0.02) * 1.6 : 0;      // typing
   ctx.fillStyle = e.color; roundRect(x - 15, y + 8 + t, 7, 12, 3); ctx.fill(); roundRect(x + 8, y + 8 - t, 7, 12, 3); ctx.fill();
   ctx.fillStyle = e.skin; ctx.beginPath(); ctx.arc(x - 12, y + 20 + t, 3, 0, 7); ctx.arc(x + 12, y + 20 - t, 3, 0, 7); ctx.fill();
-  drawHead(e, x, y - 12);
+  drawHead(e, x, y - 12, now);
   emote(e, x, y - 30, now);
   nameplate(e, x, y + 30);
 }
@@ -419,13 +469,14 @@ function drawWalking(e, now) {
   ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1; roundRect(x - 9, y - 10, 18, 20, 6); ctx.stroke();
   ctx.fillStyle = e.color; roundRect(x - 12, y - 7 + walk * 2.5, 5, 13, 3); ctx.fill(); roundRect(x + 7, y - 7 - walk * 2.5, 5, 13, 3); ctx.fill();
   ctx.fillStyle = e.skin; ctx.beginPath(); ctx.arc(x - 9.5, y + 5 + walk * 2.5, 2.6, 0, 7); ctx.arc(x + 9.5, y + 5 - walk * 2.5, 2.6, 0, 7); ctx.fill();
-  drawHead(e, x + e.facing, y - 16);
+  drawHead(e, x + e.facing, y - 16, now);
   emote(e, x, y - 32, now);
   nameplate(e, x, y + 26);
 }
 
-function drawHead(e, x, y) {
+function drawHead(e, x, y, now) {
   const st = e.status, worried = st === 'blocked', focused = st === 'working';
+  const blink = (((now || 0) + e.blinkOffset) % 3800) < 140;
   ctx.fillStyle = shade(e.skin, -25); ctx.fillRect(x - 3, y + 6, 6, 4);        // neck
   ctx.fillStyle = e.skin; ctx.beginPath(); ctx.arc(x - 7, y, 1.8, 0, 7); ctx.arc(x + 7, y, 1.8, 0, 7); ctx.fill(); // ears
   ctx.beginPath(); ctx.arc(x, y, 7.2, 0, 7); ctx.fill();                        // face
@@ -438,7 +489,8 @@ function drawHead(e, x, y) {
   else if (focused) { ctx.moveTo(x - 4.2, y - 1.1); ctx.lineTo(x - 1.4, y - 1.4); ctx.moveTo(x + 4.2, y - 1.1); ctx.lineTo(x + 1.4, y - 1.4); }
   else { ctx.moveTo(x - 4.2, y - 1.9); ctx.lineTo(x - 1.6, y - 2.1); ctx.moveTo(x + 4.2, y - 1.9); ctx.lineTo(x + 1.6, y - 2.1); }
   ctx.stroke();
-  ctx.fillStyle = '#14202f'; ctx.beginPath(); ctx.arc(x - 2.4, y + 1, 1, 0, 7); ctx.arc(x + 2.4, y + 1, 1, 0, 7); ctx.fill(); // eyes
+  if (blink) { ctx.strokeStyle = '#14202f'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - 3.4, y + 1); ctx.lineTo(x - 1.4, y + 1); ctx.moveTo(x + 1.4, y + 1); ctx.lineTo(x + 3.4, y + 1); ctx.stroke(); } // blink
+  else { ctx.fillStyle = '#14202f'; ctx.beginPath(); ctx.arc(x - 2.4, y + 1, 1, 0, 7); ctx.arc(x + 2.4, y + 1, 1, 0, 7); ctx.fill(); } // eyes
   if (e.look.glasses) { ctx.strokeStyle = 'rgba(20,30,47,0.85)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x - 2.4, y + 1, 2.3, 0, 7); ctx.arc(x + 2.4, y + 1, 2.3, 0, 7); ctx.moveTo(x - 0.1, y + 1); ctx.lineTo(x + 0.1, y + 1); ctx.stroke(); }
   // mouth
   ctx.strokeStyle = '#7a4b3a'; ctx.lineWidth = 1; ctx.beginPath();
