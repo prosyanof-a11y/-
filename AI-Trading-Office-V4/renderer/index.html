@@ -8,7 +8,7 @@
   <title>AI Trading Office</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="view-hud">
   <!-- Top bar -->
   <header class="topbar">
     <div class="brand">
@@ -24,6 +24,7 @@
         <span class="dot"></span><span id="conn-text">инициализация…</span>
       </div>
       <div id="clock" class="clock">--:--:--</div>
+      <button id="btn-view" class="view-toggle" title="Переключить вид">🏢 Зал</button>
       <button id="btn-settings" class="icon-btn" title="Настройки">⚙</button>
     </div>
   </header>
@@ -32,6 +33,7 @@
   <main class="stage">
     <svg id="links" class="links" preserveAspectRatio="none"></svg>
     <section id="agents-grid" class="agents-grid"><!-- panels injected --></section>
+    <canvas id="floor" class="floor"></canvas>
 
     <aside class="feed">
       <div class="feed-title">ЛЕНТА СОБЫТИЙ</div>
@@ -65,6 +67,7 @@
   </div>
 
   <script src="agents.js"></script>
+  <script src="office.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

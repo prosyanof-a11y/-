@@ -105,6 +105,7 @@ function render(w) {
     }
   }
   applyLinkStates(w);
+  if (window.Office) window.Office.update(w);   // feed the pixel-floor view too
   if (w.log && w.log.length) pushFeed(w.log);
   if (w.summary) el('summary').textContent =
     `${w.summary.connected} агентов подключены · ${w.summary.working} в работе`;
@@ -195,6 +196,14 @@ async function saveSettings() {
   closeSettings();
 }
 
+// ---------- view toggle (HUD <-> pixel floor) ----------
+function toggleView() {
+  const floor = document.body.classList.toggle('view-floor');
+  document.body.classList.toggle('view-hud', !floor);
+  el('btn-view').textContent = floor ? '📊 HUD' : '🏢 Зал';
+  if (floor && window.Office) window.Office.start();
+}
+
 // ---------- clock ----------
 function tickClock() {
   const d = new Date();
@@ -205,9 +214,11 @@ function tickClock() {
 // ---------- boot ----------
 window.addEventListener('DOMContentLoaded', () => {
   buildPanels();
+  if (window.Office) { window.Office.init(el('floor'), AGENTS); window.Office.start(); }
   el('btn-settings').addEventListener('click', openSettings);
   el('btn-cancel').addEventListener('click', closeSettings);
   el('btn-save').addEventListener('click', saveSettings);
+  el('btn-view').addEventListener('click', toggleView);
   window.addEventListener('resize', () => requestAnimationFrame(drawLinks));
   tickClock(); setInterval(tickClock, 1000);
   wireBridge();
