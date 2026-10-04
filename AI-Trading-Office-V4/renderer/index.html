@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;" />
+  <title>AI Trading Office</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◈</span>
+      <div>
+        <div class="brand-title">ЦЕНТР УПРАВЛЕНИЯ AI-ТРЕЙДИНГОМ</div>
+        <div class="brand-sub">Искусственный интеллект · Мультиагентная система 24/7</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div id="mode-badge" class="mode-badge demo" title="Режим данных">DEMO</div>
+      <div id="conn-badge" class="conn-badge" title="Соединение с ядром">
+        <span class="dot"></span><span id="conn-text">инициализация…</span>
+      </div>
+      <div id="clock" class="clock">--:--:--</div>
+      <button id="btn-settings" class="icon-btn" title="Настройки">⚙</button>
+    </div>
+  </header>
+
+  <!-- Main grid: left agents | center hub | right agents | activity feed -->
+  <main class="stage">
+    <svg id="links" class="links" preserveAspectRatio="none"></svg>
+    <section id="agents-grid" class="agents-grid"><!-- panels injected --></section>
+
+    <aside class="feed">
+      <div class="feed-title">ЛЕНТА СОБЫТИЙ</div>
+      <ul id="feed-list" class="feed-list"></ul>
+    </aside>
+  </main>
+
+  <footer class="statusbar">
+    <span id="summary">8 агентов подключены · прибыльные решения</span>
+    <span class="spacer"></span>
+    <span id="version" class="muted">v—</span>
+  </footer>
+
+  <!-- Settings modal -->
+  <div id="settings" class="modal hidden">
+    <div class="modal-card">
+      <h2>Настройки подключения</h2>
+      <p class="muted">Укажите адрес ядра и read-only ключ офиса. Пустой ключ — работа в DEMO.</p>
+      <label>Адрес ядра (WebSocket)
+        <input id="in-url" type="text" placeholder="wss://…/ws/office" />
+      </label>
+      <label>Office-ключ (read-only)
+        <input id="in-key" type="password" placeholder="оставьте пустым для DEMO" />
+      </label>
+      <label class="row"><input id="in-demo" type="checkbox" /> Стартовать в DEMO, если ядро недоступно</label>
+      <div class="modal-actions">
+        <button id="btn-cancel" class="btn ghost">Отмена</button>
+        <button id="btn-save" class="btn primary">Сохранить и переподключиться</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="agents.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
