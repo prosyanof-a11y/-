@@ -46,7 +46,7 @@ const MAP_ARCS = [[0, 2], [2, 4], [1, 5], [3, 6], [0, 7], [5, 3], [2, 6]];
 
 let canvas, ctx, raf = 0, last = 0, dpr = 1;
 let ents = {}, agentsDef = null;
-let viewScale = 1, viewOx = 0, viewOy = 0, selectedId = null;
+let viewScale = 1, viewOx = 0, viewOy = 0, selectedId = null, onSelectCb = null;
 let standup = { active: false, until: 0, nextAt: 0 };
 let signals = [], nextSignalAt = 0, lastDecision = '';
 
@@ -66,7 +66,7 @@ function initEntities() {
       color: accentFor(a.id), skin: SKINS[hh % SKINS.length], hair: HAIRS[(hh >> 3) % HAIRS.length],
       hairStyle: hh % 5, beard: ((hh >> 6) % 4) === 0, look: ROLE_LOOK[a.id] || {},
       brokerRun: { active: false, phase: 'go', until: 0 }, brokerCooldown: 0,
-      blinkOffset: (hh % 5000), data: null
+      blinkOffset: (hh % 5000), data: null, gesture: null, gestureUntil: 0
     };
   });
   standup = { active: false, until: 0, nextAt: performance.now() + 20000 };
@@ -92,7 +92,8 @@ const Office = {
   forceStandup() { standup.active = true; standup.until = performance.now() + 20000; },
   forceSignal() { signals.push({ t0: performance.now(), dur: 4600, symbol: SYMB[Math.floor(Math.random() * SYMB.length)], side: sideFromDecision() }); },
   forceBrokerRun() { const e = ents.execution; if (e) e.brokerRun = { active: true, phase: 'go', until: 0, symbol: 'XAUUSD', side: 'BUY' }; },
-  select(id) { selectedId = (id && ents[id]) ? id : null; }
+  select(id) { selectedId = (id && ents[id]) ? id : null; if (onSelectCb) onSelectCb(selectedId); },
+  onSelect(cb) { onSelectCb = cb; }
 };
 
 function resizeIfNeeded() {
@@ -164,6 +165,13 @@ function step(dt, now) {
       }
     }
     moveToward(e, dt);
+    // idle micro-gestures (stretch, or sip at the coffee machine)
+    if (!e.moving && e.status !== 'working' && e.status !== 'blocked') {
+      if ((!e.gesture || now > e.gestureUntil) && Math.random() < 0.004) {
+        e.gesture = (e.roamKind === 'coffee') ? 'sip' : 'stretch'; e.gestureUntil = now + 1300;
+      }
+    }
+    if (e.gesture && (e.moving || now > e.gestureUntil)) e.gesture = null;
   }
 }
 
@@ -224,6 +232,7 @@ function onClick(ev) {
   let best = null, bd = 1e9;
   for (const id in ents) { const e = ents[id]; const d = Math.hypot(e.x - lx, e.y - ly); if (d < bd) { bd = d; best = id; } }
   selectedId = (best && bd < 34 && best === selectedId) ? null : (best && bd < 34 ? best : null);
+  if (onSelectCb) onSelectCb(selectedId);
 }
 
 function drawSelectionRing(e, now) {
@@ -331,26 +340,50 @@ function drawTicker(now) {
   ctx.restore();
 }
 
+// accelerated day/night so the sky visibly shifts dawn→day→dusk→night over ~2 min
+function smooth(t) { return t * t * (3 - 2 * t); }
+function mixHex(a, b, t) {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const r = Math.round(((pa >> 16) & 255) + (((pb >> 16) & 255) - ((pa >> 16) & 255)) * t);
+  const g = Math.round(((pa >> 8) & 255) + (((pb >> 8) & 255) - ((pa >> 8) & 255)) * t);
+  const bl = Math.round((pa & 255) + ((pb & 255) - (pa & 255)) * t);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
+}
+function skyFor(now) {
+  const phase = ((now / 120000) + 0.72) % 1;                 // 0 = midnight; starts in the evening
+  const dayness = Math.max(0, Math.min(1, 0.5 - 0.5 * Math.cos(phase * 2 * Math.PI)));
+  const twi = Math.max(0, 1 - Math.min(Math.abs(phase - 0.25), Math.abs(phase - 0.75)) / 0.09);
+  const top = mixHex('#0a1430', '#2f74d6', smooth(dayness));
+  let bot = mixHex('#0a1230', '#bcd9f2', smooth(dayness));
+  bot = mixHex(bot, '#c9743a', twi * 0.6);                   // warm horizon at dawn/dusk
+  const bld = mixHex('#0c1d44', '#2a3f66', dayness * 0.6);
+  let sun, bxf;
+  if (phase >= 0.25 && phase < 0.75) { sun = true; bxf = (phase - 0.25) / 0.5; }
+  else { sun = false; const np = phase < 0.25 ? phase + 1 : phase; bxf = (np - 0.75) / 0.5; }
+  return { top, bot, bld, stars: 1 - dayness, lights: 1 - dayness, sun, bx: bxf, alt: Math.sin(bxf * Math.PI) };
+}
 function drawWindow(x, y, w, h, now) {
+  const sky = skyFor(now);
   roundRect(x, y, w, h, 6); ctx.fillStyle = '#05102a'; ctx.fill();
   ctx.save(); ctx.clip();
   const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, '#0a1f4a'); g.addColorStop(1, '#0a1230'); ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
-  // moon + stars
-  ctx.fillStyle = 'rgba(230,240,255,0.85)'; ctx.beginPath(); ctx.arc(x + w - 30, y + 22, 8, 0, 7); ctx.fill();
-  ctx.fillStyle = 'rgba(10,31,74,0.9)'; ctx.beginPath(); ctx.arc(x + w - 26, y + 19, 7, 0, 7); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  for (let s = 0; s < 14; s++) ctx.fillRect(x + ((s * 53) % (w - 10)) + 5, y + ((s * 29) % 30) + 4, 1, 1);
-  // skyline
-  let bx = x + 6, seed = Math.floor(x);
-  while (bx < x + w - 6) {
+  g.addColorStop(0, sky.top); g.addColorStop(1, sky.bot); ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  // sun / moon along an arc
+  const bx = x + 20 + sky.bx * (w - 40), by = y + h - 18 - sky.alt * (h - 34);
+  if (sky.alt > 0.02) {
+    if (sky.sun) { const gg = ctx.createRadialGradient(bx, by, 2, bx, by, 16); gg.addColorStop(0, 'rgba(255,236,170,0.9)'); gg.addColorStop(1, 'rgba(255,236,170,0)'); ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(bx, by, 16, 0, 7); ctx.fill(); ctx.fillStyle = '#ffe9a0'; ctx.beginPath(); ctx.arc(bx, by, 7, 0, 7); ctx.fill(); }
+    else { ctx.fillStyle = 'rgba(230,240,255,0.9)'; ctx.beginPath(); ctx.arc(bx, by, 7, 0, 7); ctx.fill(); ctx.fillStyle = sky.bot; ctx.beginPath(); ctx.arc(bx + 3, by - 3, 6, 0, 7); ctx.fill(); }
+  }
+  // stars (night only)
+  if (sky.stars > 0.02) { ctx.fillStyle = `rgba(255,255,255,${0.6 * sky.stars})`; for (let s = 0; s < 16; s++) ctx.fillRect(x + ((s * 53) % (w - 10)) + 5, y + ((s * 29) % 30) + 4, 1, 1); }
+  // skyline + lit windows (brighter at night)
+  let sx = x + 6, seed = Math.floor(x);
+  while (sx < x + w - 6) {
     const bw = 16 + (seed % 20), bh = 24 + ((seed * 7) % 56); seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    const by = y + h - bh; ctx.fillStyle = '#0c1d44'; ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = 'rgba(255,220,120,0.5)';
-    for (let wy = by + 4; wy < y + h - 3; wy += 7)
-      for (let wx = bx + 3; wx < bx + bw - 3; wx += 6)
-        if (((wx * 13 + wy * 7 + Math.floor(now / 1700)) % 5) === 0) ctx.fillRect(wx, wy, 2, 3);
-    bx += bw + 5;
+    const byy = y + h - bh; ctx.fillStyle = sky.bld; ctx.fillRect(sx, byy, bw, bh);
+    if (sky.lights > 0.02) { ctx.fillStyle = `rgba(255,220,120,${0.55 * sky.lights})`;
+      for (let wy = byy + 4; wy < y + h - 3; wy += 7) for (let wx = sx + 3; wx < sx + bw - 3; wx += 6) if (((wx * 13 + wy * 7 + Math.floor(now / 1700)) % 5) === 0) ctx.fillRect(wx, wy, 2, 3); }
+    sx += bw + 5;
   }
   ctx.restore();
   ctx.strokeStyle = 'rgba(54,208,255,0.3)'; ctx.lineWidth = 2; roundRect(x, y, w, h, 6); ctx.stroke();
@@ -451,7 +484,8 @@ function drawSeated(e, now) {
   ctx.fillStyle = shade(e.color, -28); roundRect(x + 4, y - 2, 7, 22, 4); ctx.fill();      // body shade
   if (e.look.tie) { ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 2.5, y + 4); ctx.lineTo(x, y + 14); ctx.lineTo(x + 2.5, y + 4); ctx.closePath(); ctx.fill(); }
   ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1; roundRect(x - 11, y - 2, 22, 22, 7); ctx.stroke();
-  const t = e.status === 'working' ? Math.sin(now * 0.02) * 1.6 : 0;      // typing
+  const hot = hotPipeline();                                             // type harder on a hot signal
+  const t = e.status === 'working' ? Math.sin(now * (hot ? 0.035 : 0.02)) * (hot ? 2.6 : 1.6) : 0;
   ctx.fillStyle = e.color; roundRect(x - 15, y + 8 + t, 7, 12, 3); ctx.fill(); roundRect(x + 8, y + 8 - t, 7, 12, 3); ctx.fill();
   ctx.fillStyle = e.skin; ctx.beginPath(); ctx.arc(x - 12, y + 20 + t, 3, 0, 7); ctx.arc(x + 12, y + 20 - t, 3, 0, 7); ctx.fill();
   drawHead(e, x, y - 12, now);
@@ -467,8 +501,17 @@ function drawWalking(e, now) {
   ctx.fillStyle = shade(e.color, -28); roundRect(x + 3, y - 10, 6, 20, 4); ctx.fill();
   if (e.look.tie) { ctx.fillStyle = '#c0392b'; ctx.fillRect(x - 1.5, y - 8, 3, 12); }
   ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1; roundRect(x - 9, y - 10, 18, 20, 6); ctx.stroke();
-  ctx.fillStyle = e.color; roundRect(x - 12, y - 7 + walk * 2.5, 5, 13, 3); ctx.fill(); roundRect(x + 7, y - 7 - walk * 2.5, 5, 13, 3); ctx.fill();
-  ctx.fillStyle = e.skin; ctx.beginPath(); ctx.arc(x - 9.5, y + 5 + walk * 2.5, 2.6, 0, 7); ctx.arc(x + 9.5, y + 5 - walk * 2.5, 2.6, 0, 7); ctx.fill();
+  if (e.gesture === 'stretch' && !e.moving) {                 // arms raised
+    ctx.fillStyle = e.color; roundRect(x - 12, y - 17, 5, 14, 3); ctx.fill(); roundRect(x + 7, y - 17, 5, 14, 3); ctx.fill();
+    ctx.fillStyle = e.skin; ctx.beginPath(); ctx.arc(x - 9.5, y - 17, 2.6, 0, 7); ctx.arc(x + 9.5, y - 17, 2.6, 0, 7); ctx.fill();
+  } else if (e.gesture === 'sip' && !e.moving) {               // raise a mug to the face
+    ctx.fillStyle = e.color; roundRect(x - 12, y - 7, 5, 13, 3); ctx.fill(); roundRect(x + 5, y - 11, 5, 12, 3); ctx.fill();
+    ctx.fillStyle = e.skin; ctx.beginPath(); ctx.arc(x - 9.5, y + 5, 2.6, 0, 7); ctx.arc(x + 8, y - 12, 2.6, 0, 7); ctx.fill();
+    ctx.fillStyle = '#e8eef7'; roundRect(x + 6, y - 16, 5, 5, 1); ctx.fill();
+  } else {
+    ctx.fillStyle = e.color; roundRect(x - 12, y - 7 + walk * 2.5, 5, 13, 3); ctx.fill(); roundRect(x + 7, y - 7 - walk * 2.5, 5, 13, 3); ctx.fill();
+    ctx.fillStyle = e.skin; ctx.beginPath(); ctx.arc(x - 9.5, y + 5 + walk * 2.5, 2.6, 0, 7); ctx.arc(x + 9.5, y + 5 - walk * 2.5, 2.6, 0, 7); ctx.fill();
+  }
   drawHead(e, x + e.facing, y - 16, now);
   emote(e, x, y - 32, now);
   nameplate(e, x, y + 26);

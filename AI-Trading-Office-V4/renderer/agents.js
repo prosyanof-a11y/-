@@ -62,6 +62,7 @@ class Simulator {
     this.risk = rnd(0.6, 1.3);
     this.roi = rnd(-1.5, 4.5);
     this.swing = rnd(-0.8, 1.2);
+    this.trades = 0; this.wins = 0; this.pnl = 0;     // session trade stats (P&L tile)
     this.state = {};
     for (const a of AGENTS) this.state[a.id] = { status: 'waiting', metrics: {} };
     this._recompute();
@@ -130,6 +131,16 @@ class Simulator {
     if (this.risk > 1.6 && Math.random() < 0.5)
       log.push({ kind: 'bad', text: `Риск-менеджер: общий риск ${this.risk.toFixed(1)}% — вход заблокирован` });
 
+    // simulate trade closes for the session P&L tile
+    if (this.conf > 76 && this.risk < 1.6 && Math.random() < 0.32) {
+      this.trades++;
+      const win = Math.random() < (this.bull ? 0.58 : 0.5);
+      const amt = win ? rnd(6, 42) : -rnd(5, 30);
+      if (win) this.wins++;
+      this.pnl += amt;
+      log.push({ kind: win ? 'ok' : 'bad', text: `Сделка ${win ? 'в прибыль' : 'в убыток'}: ${amt >= 0 ? '+' : ''}${amt.toFixed(0)}$` });
+    }
+
     return this.snapshot(log);
   }
 
@@ -149,7 +160,8 @@ class Simulator {
     const working = Object.values(agents).filter(s => s.status === 'working').length;
     return {
       seq: this.seq, mode: 'demo', connection: 'demo',
-      summary: { connected: AGENTS.length, working },
+      summary: { connected: AGENTS.length, working, pnl: this.pnl, trades: this.trades,
+                 winrate: this.trades ? Math.round(this.wins / this.trades * 100) : null },
       agents,
       log: log.map((l, i) => ({ ...l, ts: nowHHMMSS(), seq: this.seq * 100 + i }))
     };

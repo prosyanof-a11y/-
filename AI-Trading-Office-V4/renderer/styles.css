@@ -68,6 +68,8 @@ body.view-floor .agents-grid,body.view-floor .links{display:none}
 .panel.accent-cyan{border-top:2px solid rgba(54,208,255,.65)}
 .panel.accent-gold{border-top:2px solid rgba(255,207,90,.7)}
 .panel.accent-violet{border-top:2px solid rgba(181,139,255,.7)}
+.panel{cursor:pointer}
+.panel.selected{border-color:var(--cyan); box-shadow:0 6px 26px rgba(0,0,0,.5), 0 0 26px rgba(54,208,255,.45)}
 .panel.is-working{box-shadow:0 6px 26px rgba(0,0,0,.45), 0 0 22px rgba(54,227,154,.18)}
 .panel.is-blocked{box-shadow:0 6px 26px rgba(0,0,0,.45), 0 0 22px rgba(255,93,108,.2)}
 .panel.hub{align-items:center; justify-content:center; text-align:center;

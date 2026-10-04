@@ -58,9 +58,29 @@ function buildPanels() {
     root.querySelectorAll('.v').forEach(v => { fields[v.dataset.k] = v; });
     panels[a.id] = { root, badge: root.querySelector('[data-badge]'), fields, spark: root.querySelector('.spark') };
     history[a.id] = [];
+    root.addEventListener('click', () => { if (window.Office) window.Office.select(a.id); });
   }
+
+  // P&L / session-summary tile in the free bottom-center cell
+  const pnl = document.createElement('div');
+  pnl.className = 'panel pnl accent-cyan';
+  pnl.style.gridColumn = 2; pnl.style.gridRow = 3;
+  pnl.innerHTML = `
+    <div class="panel-head"><div class="panel-titles">
+      <div class="panel-name">ИТОГ СЕССИИ</div><div class="panel-sub">Сделки и P&amp;L</div></div></div>
+    <div class="panel-body">
+      <div class="kv"><span class="k">Сделок</span><span class="v" id="pnl-trades">0</span></div>
+      <div class="kv"><span class="k">Winrate</span><span class="v" id="pnl-wr">—</span></div>
+      <div class="kv"><span class="k">P&amp;L сессии</span><span class="v" id="pnl-val">0 $</span></div>
+    </div>
+    <canvas class="spark" id="pnl-spark" width="300" height="60"></canvas>`;
+  el('agents-grid').appendChild(pnl);
+  history.pnl = [];
+
   requestAnimationFrame(drawLinks);
 }
+
+function highlightPanel(id) { for (const k in panels) panels[k].root.classList.toggle('selected', k === id); }
 
 // ---------- connection lines (hub -> each agent) ----------
 function drawLinks() {
@@ -121,6 +141,15 @@ function render(w) {
   if (w.log && w.log.length) pushFeed(w.log);
   if (w.summary) el('summary').textContent =
     `${w.summary.connected} агентов подключены · ${w.summary.working} в работе`;
+  // P&L tile
+  if (w.summary && el('pnl-val')) {
+    el('pnl-trades').textContent = w.summary.trades ?? 0;
+    el('pnl-wr').textContent = w.summary.winrate != null ? w.summary.winrate + '%' : '—';
+    const v = w.summary.pnl ?? 0, pv = el('pnl-val');
+    pv.textContent = (v >= 0 ? '+' : '') + v.toFixed(0) + ' $';
+    pv.style.color = v >= 0 ? 'var(--green)' : 'var(--red)';
+    if (history.pnl) { history.pnl.push(v); if (history.pnl.length > 60) history.pnl.shift(); drawSpark(el('pnl-spark'), history.pnl, v >= 0 ? '#36e39a' : '#ff5d6c'); }
+  }
   // header mode
   const modeBadge = el('mode-badge');
   modeBadge.textContent = w.mode === 'live' ? 'LIVE' : 'DEMO';
@@ -240,7 +269,7 @@ function tickClock() {
 // ---------- boot ----------
 window.addEventListener('DOMContentLoaded', () => {
   buildPanels();
-  if (window.Office) { window.Office.init(el('floor'), AGENTS); window.Office.start(); }
+  if (window.Office) { window.Office.init(el('floor'), AGENTS); window.Office.start(); window.Office.onSelect(highlightPanel); }
   el('btn-settings').addEventListener('click', openSettings);
   el('btn-cancel').addEventListener('click', closeSettings);
   el('btn-save').addEventListener('click', saveSettings);
